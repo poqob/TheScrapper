@@ -1,10 +1,22 @@
 import re
-import string
 from urllib.parse import urlparse
 
 import requests.exceptions
 from socid_extractor import parse, extract
 from typing import List
+
+_PHONE_SINGLE = r"\+?\d{10,13}"
+_PHONE_GROUPED = (
+    r"(?:\+?\d{1,4}\s?)?"
+    r"(?:\(\d{2,4}\)\s?)?"
+    r"\d{2,4}"
+    r"(?:[\s\-\.]\d{2,4}){1,4}"
+)
+_PHONE_PATTERN = r"(?<!\d)(?:" + _PHONE_SINGLE + r"|" + _PHONE_GROUPED + r")(?!\d)"
+_EMAIL_PATTERN = r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*\.[a-zA-Z]{2,24}"
+
+_PHONE_REGEX = re.compile(_PHONE_PATTERN)
+_EMAIL_REGEX = re.compile(_EMAIL_PATTERN)
 
 
 class InfoReader:
@@ -29,8 +41,8 @@ class InfoReader:
         self.content: dict = content
         self.social_path: str = social_path
         self.res: dict = {
-            "phone": r"/^[\+]?[(]?[0-9]{3}[)]?[-\s\.]?[0-9]{3}[-\s\.]?[0-9]{4,7}$/gm",
-            "email": r"(^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$)"
+            "phone": _PHONE_PATTERN,
+            "email": _EMAIL_PATTERN,
         }
 
     def getPhoneNumber(self) -> list:
@@ -39,18 +51,19 @@ class InfoReader:
         Returns:
             list: [description]
         """
-        # Doesnt work that good
         numbers: list = []
+        seen: set = set()
         texts: list = self.content["text"]
 
         for text in texts:
             for n in text.split("\n"):
-                if re.match(self.res["phone"], n):
-                    for letter in string.ascii_letters:
-                        n: object = n.replace(letter, "")
-                    numbers.append(n)
+                for match in _PHONE_REGEX.findall(n):
+                    digits = re.sub(r"\D", "", match)
+                    if 9 <= len(digits) <= 15 and digits not in seen:
+                        seen.add(digits)
+                        numbers.append(digits)
 
-        return list(dict.fromkeys(numbers))
+        return list(numbers)
 
     def getEmails(self) -> list:
         """getEmails Function
@@ -59,20 +72,26 @@ class InfoReader:
             list: [description]
         """
         emails: list = []
+        seen: set = set()
         texts: object = self.content["text"]
 
         for text in texts:
             for s in text.split("\n"):
-                if re.match(self.res["email"], s):
-                    emails.append(s)
+                for match in _EMAIL_REGEX.findall(s):
+                    if match not in seen:
+                        seen.add(match)
+                        emails.append(match)
 
         for link in self.content["urls"]:
             if link is None:
                 continue
             if "mailto:" in link:
-                emails.append(link.replace("mailto:", ""))
+                email = link.replace("mailto:", "").strip().split("?")[0]
+                if email and email not in seen:
+                    seen.add(email)
+                    emails.append(email)
 
-        return list(dict.fromkeys(emails))
+        return emails
 
     def getSocials(self) -> list:
         """getSocials Function

@@ -8,6 +8,7 @@ import pandas as pd
 
 from modules.scrapper import Scrapper
 from modules.info_reader import InfoReader
+from modules.xlsx_scanner import detect_website_column
 from TheScrapper import normalize_url, scrape
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -115,7 +116,7 @@ with tab_single:
 
 with tab_batch:
     uploaded_file = st.file_uploader("Upload CSV or Excel file", type=["csv", "xlsx", "xls"])
-    col_name = st.text_input("Column name containing URLs", value="url")
+    col_name = st.text_input("Column name containing URLs", value="", placeholder="Leave empty to auto-detect")
     run_batch = st.button("Scrape All", key="batch", use_container_width=True)
 
 # --- Processing ---
@@ -164,9 +165,15 @@ elif run_batch and uploaded_file:
         st.error(f"Could not read file: {e}")
         st.stop()
 
-    if col_name not in input_df.columns:
-        st.error(f"Column **'{col_name}'** not found. Available columns: {', '.join(input_df.columns)}")
-        st.stop()
+    if not col_name or col_name not in input_df.columns:
+        col_name = detect_website_column(input_df.columns.tolist(), input_df.values.tolist())
+        if col_name is None:
+            st.error(
+                "Could not auto-detect a website column. Available columns: "
+                + ", ".join(input_df.columns),
+            )
+            st.stop()
+        st.success(f"Auto-detected website column: **'{col_name}'**")
 
     raw_urls = input_df[col_name].dropna().astype(str).str.strip().tolist()
     raw_urls = [u for u in raw_urls if u]
@@ -185,8 +192,20 @@ elif run_batch and uploaded_file:
 
     st.success(f"Completed! {len(results)}/{len(urls)} URLs scraped successfully.")
 
-    df = results_to_dataframe(results)
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    # Enrich the original file with the scraped contact data.
+    results_map = {r.get("Target", ""): r for r in results}
+
+    def scan_columns(value):
+        if value is None or not str(value).strip():
+            return "", ""
+        r = results_map.get(normalize_url(str(value).strip()))
+        if not r:
+            return "", ""
+        return "; ".join(r.get("Numbers", [])), "; ".join(r.get("E-Mails", []))
+
+    enriched = input_df.copy()
+    enriched["phone-scan"], enriched["mail-scan"] = zip(*enriched[col_name].apply(scan_columns))
+    st.dataframe(enriched, use_container_width=True, hide_index=True)
 
     # --- Export ---
     st.subheader("Export")
@@ -194,16 +213,16 @@ elif run_batch and uploaded_file:
     with col1:
         st.download_button(
             "Download CSV",
-            df.to_csv(index=False).encode("utf-8"),
-            file_name="results.csv",
+            enriched.to_csv(index=False).encode("utf-8"),
+            file_name="results-scanned.csv",
             mime="text/csv",
             use_container_width=True,
         )
     with col2:
         st.download_button(
             "Download Excel",
-            to_excel_bytes(df),
-            file_name="results.xlsx",
+            to_excel_bytes(enriched),
+            file_name=f"{uploaded_file.name.split('.')[0]}-scanned.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
         )

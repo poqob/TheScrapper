@@ -53,6 +53,10 @@ def build_parser() -> ArgumentParser:
     p.add_argument("-o",   "--output",         action="store_true", help="Save output to a JSON file.")
     p.add_argument("--csv",                    help="CSV or Excel (.xlsx) file with URLs. Reads URLs and writes results back.")
     p.add_argument("--csv-column",             default="url", help="Column name containing URLs in the CSV/Excel file (default: 'url').")
+    p.add_argument("--scan",                   help="Excel (.xlsx) file to enrich: auto-detects the website column, scrapes "
+                                                     "each site's phone & email, and writes <input>-scanned.xlsx with "
+                                                     "'phone-scan' and 'mail-scan' columns appended.")
+    p.add_argument("--scan-column",            default="", help="Explicit website column name for --scan (default: auto-detect).")
     p.add_argument("-v",   "--verbose",        action="store_true", help="Verbose output.")
     p.add_argument("-t",   "--threads",        type=int, default=5, help="Number of concurrent threads for batch scraping (default: 5).")
     return p
@@ -312,15 +316,25 @@ def main() -> None:
     if args.crawl < 0:
         raise SystemExit("--crawl must be 0 or a positive integer")
 
-    if not args.url and not args.urls and not args.csv:
-        raise SystemExit("Please add --url, --urls, or --csv")
+    if not args.url and not args.urls and not args.csv and not args.scan:
+        raise SystemExit("Please add --url, --urls, --csv, or --scan")
 
     if not args.banner:
         print(BANNER)
 
     verbose = print if args.verbose else lambda *_: None
 
-    if args.csv:
+    if args.scan:
+        scan_path = Path(args.scan)
+        if not scan_path.exists():
+            raise SystemExit(f"File not found: {scan_path}")
+
+        from modules.xlsx_scanner import scan_xlsx
+
+        out_path = scan_xlsx(str(scan_path), args, verbose)
+        print(f"Saved -> {out_path}")
+
+    elif args.csv:
         csv_path = Path(args.csv)
         if not csv_path.exists():
             raise SystemExit(f"File not found: {args.csv}")

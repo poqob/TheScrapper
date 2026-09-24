@@ -52,6 +52,21 @@ python3 TheScrapper.py --csv targets.csv
 python3 TheScrapper.py --csv targets.xlsx --csv-column website
 ```
 
+- Enrich an existing Excel file (e.g. a Google Maps leads export) by scraping
+  each website for phone numbers and e-mails:
+```bash
+python3 TheScrapper.py --scan leads.xlsx
+python3 TheScrapper.py --scan leads.xlsx --crawl 2 -t 8
+python3 TheScrapper.py --scan leads.xlsx --scan-column url
+```
+
+  `--scan` auto-detects the website column (English and Turkish names such as
+  `website`, `url`, `link`, `web sitesi`, ...), crawls every listed site and
+  appends two new columns — `phone-scan` and `mail-scan` — to a copy of your
+  file saved as `output/<filename>-scanned.xlsx`. All original columns and rows
+  are preserved; rows without a website are left untouched. Use `--crawl N` to
+  also scan up to N linked pages per site (often needed to reach a iletisim/contact page).
+
 Results are automatically written to `output/<filename>_results.csv` or `.xlsx`.
 
 

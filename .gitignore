@@ -4,3 +4,5 @@ __pycache__
 .venv
 .idea
 test.py
+output/*_results.*
+output/*-scanned.xlsx
